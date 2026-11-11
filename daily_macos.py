@@ -3,7 +3,6 @@ import argparse
 import os
 from pathlib import Path
 import plistlib
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,14 +12,13 @@ QODER_LABEL = f"{LABEL}.qoder"
 ROOT = Path(__file__).resolve().parent
 
 
-def launch_plist(python, desktop, hour, minute, logs):
+def launch_plist(python, hour, minute, logs):
     return {
         "Label": LABEL,
         "ProgramArguments": [str(python), str(ROOT / "scheduled_run.py"), "daily",
                              "--hour", str(hour), "--minute", str(minute)],
         "WorkingDirectory": str(ROOT),
-        "EnvironmentVariables": {"AGENT_SIGNIN_DESKTOP": str(desktop),
-                                 "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
+        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
         "StartInterval": 60,
         "LimitLoadToSessionType": "Aqua",
         "StandardOutPath": str(logs / "daily.jsonl"),
@@ -84,15 +82,12 @@ def main(argv=None):
             (agents / f"{label}.plist").unlink(missing_ok=True)
         return 0
 
-    desktop = os.environ.get("AGENT_SIGNIN_DESKTOP") or shutil.which("agent-desktop")
-    if not desktop or not Path(desktop).is_file():
-        parser.error("未找到 agent-desktop")
     python = Path(os.path.abspath(sys.executable))
     agents.mkdir(parents=True, exist_ok=True)
     logs.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     _install(domain, agents, qoder_plist(python, logs))
-    _install(domain, agents, launch_plist(python, Path(desktop).absolute(), args.hour, args.minute, logs))
+    _install(domain, agents, launch_plist(python, args.hour, args.minute, logs))
     print(f"Qoder 两版：每日 10:05（UTC+8）起；日志：{logs / 'qoder.jsonl'}")
     print(f"其余平台：每日 {args.hour:02d}:{args.minute:02d}（北京时间 UTC+8）；日志：{logs / 'daily.jsonl'}")
     return 0

@@ -43,12 +43,20 @@ def _invoke(platform, action):
         import doubao_signin
 
         return doubao_signin.main(action)
-    from desktop_signin import outcome, run
+    from results import outcome
 
     if platform == "dumate":
         import dumate_signin
 
         code, result = dumate_signin.run(action)
+    elif platform == "wps-lingxi":
+        import wps_lingxi_signin
+
+        code, result = wps_lingxi_signin.run(action)
+    elif platform == "trae-cn":
+        import trae_cn_signin
+
+        code, result = trae_cn_signin.run(action)
     elif platform == "qoder-global":
         import qoder_global_signin
 
@@ -67,7 +75,7 @@ def _invoke(platform, action):
         else:
             code, result = outcome("NOT_INSTALLED", "未找到 WorkBuddy 国际版客户端", 2)
     else:
-        code, result = run(platform, action)
+        code, result = outcome("UNSUPPORTED", "此平台尚未适配当前系统", 2)
     print(json.dumps(result, ensure_ascii=False))
     return code
 

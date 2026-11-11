@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from desktop_signin import outcome
+from results import outcome
 from platform_paths import state_dir
 
 URL = "https://qwenwork.ai/app/"

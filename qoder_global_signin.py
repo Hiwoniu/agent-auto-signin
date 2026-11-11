@@ -6,7 +6,7 @@ import sys
 import time
 import urllib.request
 
-from desktop_signin import outcome
+from results import outcome
 import qoder_signin as shared
 
 ORIGIN = "https://openapi.qoder.sh"
