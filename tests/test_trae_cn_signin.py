@@ -1,7 +1,10 @@
 import base64
 import hashlib
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from Crypto.Cipher import AES
@@ -58,6 +61,53 @@ class CheckinTests(unittest.TestCase):
     def test_rejects_foreign_auth_blob(self):
         with self.assertRaises(trae.AuthError):
             trae._decrypt_blob(base64.b64encode(b"not-a-trae-blob").decode("ascii"))
+
+
+class DeviceIdTests(unittest.TestCase):
+    def _storage(self, root, payload):
+        (root / "aha").mkdir()
+        (root / "aha" / "TinyStorage").write_text(
+            json.dumps({"tiny_storage_data": payload}), encoding="utf-8",
+        )
+
+    def test_reads_encrypted_device_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._storage(root, {"aha.device.device_id": encrypted_blob({"device_id_str": "1571676408017584"})})
+            with patch.dict(os.environ, {"TRAE_CN_DATA_DIR": tmp}), patch.object(trae, "_DEVICE_ID", None):
+                self.assertEqual(trae._device_id(), "1571676408017584")
+
+    def test_missing_storage_is_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"TRAE_CN_DATA_DIR": tmp}), \
+                patch.object(trae, "_DEVICE_ID", None):
+            self.assertEqual(trae._device_id(), "")
+
+    def test_claim_request_sends_device_header(self):
+        calls = []
+
+        class Response:
+            status = 200
+            headers = {"Content-Type": "application/json"}
+
+            def read(self, size=-1):
+                return b'{"code": 0, "message": "success"}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(request)
+            return Response()
+
+        info = {"token": "token-value", "userId": "1", "host": "https://api.trae.cn"}
+        with patch.object(trae, "_load_session", return_value=info), \
+                patch.object(trae, "_device_id", return_value="device-1"), \
+                patch.object(trae.urllib.request, "urlopen", fake_urlopen):
+            trae._request(trae.CLAIM_PATH, {"req_source": 1})
+        self.assertEqual(calls[0].get_header("X-device-id"), "device-1")
 
 
 if __name__ == "__main__":

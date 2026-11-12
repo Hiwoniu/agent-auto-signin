@@ -29,7 +29,7 @@
 | `dumate` | `qianfan-desktop-app/auth.json`（AES-GCM）+ `.cookie-key` | 直接请求 `console.bce.baidu.com` |
 | `wps-lingxi` | `WPS 灵犀/Partitions/lingxi-business-v2-*/Cookies` | 直接请求 `lingxi.wps.cn` 任务中心 |
 | `trae-cn` | `Trae CN/User/globalStorage/storage.json` 的 `iCubeAuthInfo` 密文 | 解密后请求 `api.trae.cn` |
-| `qwenwork` | 项目自己的 Chromium 配置 | 无头浏览器访问工作区 |
+| `qwenwork` | 项目自己的 Chromium 配置；配置登出时复用本机 Chrome 的千问会话 | 无头浏览器访问工作区 |
 | `workbuddy-global` | 客户端安装状态 | 不代领，只提示当天需要对话 |
 
 因此后台任务不需要辅助功能权限，也不依赖客户端进程。首次登录、扫码、短信验证仍然必须由用户在客户端或浏览器里完成一次。客户端卸载后，WorkBuddy、Qoder、WPS 灵犀和 TRAE 的解密 runtime 或 Cookie 库会消失，脚本会返回 `NO_AUTH`。
@@ -111,6 +111,8 @@ py -3 -m venv .venv
 逐行查看结果。桌面应用已有有效的个人登录态就直接复用；只有需要登录的应用才打开登录页。需要短信、扫码、第三方授权或系统钥匙串授权时，把界面留给用户处理，同时继续配置其余平台。不要把手机号、邮箱、验证码、Cookie 或令牌写入项目或日志。
 
 千问办公使用独立的本地 Chromium 配置。需要登录时运行下面的命令，进入个人工作区后回终端按 Enter 保存会话。已有该配置的有效登录态就跳过。配置保存在用户目录中：macOS 的 `~/Library/Application Support/agent-auto-signin`、Windows 的 `%LOCALAPPDATA%\agent-auto-signin`、Linux 的 `$XDG_DATA_HOME/agent-auto-signin`（默认 `~/.local/share/agent-auto-signin`）下的 `qwenwork-browser`。
+
+该配置登出时，脚本会尝试从本机 Chrome 的 `Default/Cookies` 读取 `.qwenwork.ai` 的会话（Chrome 127 之后的 Cookie 需要一次 `Chrome Safe Storage` 钥匙串读取），导入后重新打开工作区；Chrome 也登出时仍返回 `NO_AUTH`。阿里云的滑块验证按无头浏览器特征下发，脚本用真实 Chrome UA 并关闭自动化标记来避开；若仍停在 `滑动验证页面`，会返回 `CAPTCHA`，需要在有界面的浏览器里过一次。
 
 ```sh
 .venv/bin/python agent_signin.py login qwenwork

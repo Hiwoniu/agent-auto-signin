@@ -5,6 +5,11 @@ The client stores the authenticated account blob in
 AES-CBC encrypted with a random key wrapped by a fixed mask (the format used by
 the client's ``byteCrypto`` module).  Decrypting it offline yields the access
 token accepted by ``api.trae.cn`` as ``Cloud-IDE-JWT``.
+
+The claim endpoint also requires the client device id that the desktop app sends
+as ``x-device-id``.  It lives in ``aha/TinyStorage`` under
+``aha.device.device_id``, encrypted with the same scheme; without the header the
+API answers ``9004 The submitted order parameters are incorrect``.
 """
 import base64
 import hashlib
@@ -28,6 +33,7 @@ UA = (
     "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
 )
 HEADER = bytes([116, 99, 5, 16, 0, 0])
+_DEVICE_ID = None
 _IHE = bytes([
     82, 9, 106, 213, 48, 54, 165, 56, 191, 64, 163, 158, 129, 243, 215, 251,
     124, 227, 57, 130, 155, 47, 255, 135, 52, 142, 67, 68, 196, 222, 233, 203,
@@ -58,16 +64,16 @@ def _data_dir():
     return Path.home() / "Library/Application Support" / APP_NAME
 
 
-def _decrypt_blob(value):
+def _decrypt(value, label="登录态"):
     from Crypto.Cipher import AES
     from Crypto.Util.Padding import unpad
 
     try:
         raw = base64.b64decode(value, validate=True)
     except (ValueError, TypeError):
-        raise AuthError("TRAE 登录态不是有效的 base64") from None
+        raise AuthError(f"TRAE {label}不是有效的 base64") from None
     if len(raw) < 38 or raw[:6] != HEADER:
-        raise AuthError("TRAE 登录态格式不受支持，请重新登录客户端")
+        raise AuthError(f"TRAE {label}格式不受支持，请重新登录客户端")
     wrapped = raw[6:38]
     digest = hashlib.sha512(wrapped).digest()
     block = bytearray(digest + _MASK)
@@ -76,16 +82,44 @@ def _decrypt_blob(value):
     try:
         plain = unpad(AES.new(key, AES.MODE_CBC, iv).decrypt(raw[38:]), 16)
     except ValueError:
-        raise AuthError("无法解密 TRAE 登录态，请重新登录客户端") from None
+        raise AuthError(f"无法解密 TRAE {label}，请重新登录客户端") from None
     if len(plain) < 65 or hashlib.sha512(plain[64:]).digest() != plain[:64]:
-        raise AuthError("TRAE 登录态校验失败，请重新登录客户端")
+        raise AuthError(f"TRAE {label}校验失败，请重新登录客户端")
     try:
         info = json.loads(plain[64:])
     except ValueError:
-        raise AuthError("TRAE 登录态内容无法解析") from None
+        raise AuthError(f"TRAE {label}内容无法解析") from None
     if not isinstance(info, dict):
-        raise AuthError("TRAE 登录态内容格式异常")
+        raise AuthError(f"TRAE {label}内容格式异常")
     return info
+
+
+def _decrypt_blob(value):
+    return _decrypt(value)
+
+
+def _device_id():
+    """Return the desktop client device id used by the claim endpoint."""
+    global _DEVICE_ID
+    if _DEVICE_ID is not None:
+        return _DEVICE_ID
+    _DEVICE_ID = ""
+    try:
+        store = json.loads((_data_dir() / "aha/TinyStorage").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _DEVICE_ID
+    data = store.get("tiny_storage_data") if isinstance(store, dict) else None
+    value = data.get("aha.device.device_id") if isinstance(data, dict) else None
+    if not isinstance(value, str) or not value:
+        return _DEVICE_ID
+    try:
+        record = _decrypt(value, "设备标识")
+    except AuthError:
+        return _DEVICE_ID
+    device = record.get("device_id_str")
+    if isinstance(device, str) and device:
+        _DEVICE_ID = device
+    return _DEVICE_ID
 
 
 def _load_session():
@@ -138,6 +172,9 @@ def _request(path, body):
         if isinstance(info.get("userRegion"), dict) else "CN",
         "User-Agent": UA,
     }
+    device = _device_id()
+    if device:
+        headers["x-device-id"] = device
     request = urllib.request.Request(
         ORIGIN + path, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers,
     )
@@ -185,12 +222,13 @@ def _check(action):
     label = f"（{reward} Credits）" if isinstance(reward, int) and reward > 0 else ""
     if action == "status":
         return outcome("DRY_RUN", f"TRAE 今日可签到{label}，本次未领取")
+    detail = ""
     try:
         _request(CLAIM_PATH, {"req_source": 1})
     except AuthError as exc:
         return outcome("NO_AUTH", str(exc), 2)
-    except ApiError:
-        pass
+    except ApiError as exc:
+        detail = f"（{exc}）"
     # Confirm with a fresh status read; never replay the claim.
     try:
         after = _status()
@@ -200,7 +238,7 @@ def _check(action):
         after = {}
     if after.get("checked_in") is True:
         return outcome("CLAIMED", f"TRAE 确认已签到{label}")
-    return outcome("UNCONFIRMED", "已尝试 TRAE 签到，未确认到账；未再次发起领取", 1)
+    return outcome("UNCONFIRMED", f"已尝试 TRAE 签到{detail}，未确认到账；未再次发起领取", 1)
 
 
 def run(action):
