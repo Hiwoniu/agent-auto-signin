@@ -1,6 +1,81 @@
+<div align="center">
+
 # agent-auto-signin
 
-在 macOS、Windows 或 Linux 上，用已登录的个人账号跑每日积分流程。每个平台输出一行 JSON；一个平台遇到登录、权限或活动问题时，其余平台仍会继续。奖励随活动和账号权益变化，以客户端为准。
+**把每天挨个打开办公 Agent 点签到领 Token，变成一个自动任务。**
+
+[![GitHub stars](https://img.shields.io/github/stars/Hiwoniu/agent-auto-signin?style=social)](https://github.com/Hiwoniu/agent-auto-signin/stargazers) [![License](https://img.shields.io/github/license/Hiwoniu/agent-auto-signin)](LICENSE) [![公众号](https://img.shields.io/badge/%E5%85%AC%E4%BC%97%E5%8F%B7-%E5%90%91%E6%98%8E-07C160?logo=wechat&logoColor=white)](#关注向明)
+
+[快速开始](#快速开始) · [支持的平台](#支持的平台) · [交给 Agent 部署](#交给-agent从拿到代码到部署) · [配套文章](#配套文章) · [关注向明](#关注向明)
+
+</div>
+
+> 📮 配套教程和后续更新发在公众号「向明」，微信搜一搜「向明」即可关注。
+
+WorkBuddy、Qoder、豆包、TRAE、WPS 灵犀、百度搭子……每家都在送免费 Token，叫法不一样（积分、Credits、智点），规矩都一样：每天得自己去点一下。
+
+![每天要点的签到](output/daily-signin-poster.png)
+
+装好之后，每天北京时间 09:30 起，它用你本机已有的登录去各家把当天的领了，不用打开这些软件，也不用守在电脑前。下面是 2026 年 11 月 12 日在 Mac 上用作者自己账号实跑的结果：
+
+![11 月 12 日实跑结果](assets/run-result-20261112.png)
+
+## 它帮你省了什么
+
+| 繁琐的事 | 以前 | 现在 | 省下的时间 |
+| --- | --- | --- | --- |
+| 每天领各家办公 Agent 的免费 Token | 八九个软件，一个个打开、找入口、点签到；一忙就忘，Qoder 的 Credits 30 天失效，WorkBuddy 连续签到断一天重新算 | 每天 09:30 起自动领，每家单独报一个结果 | 每天那一轮手动签到，不用再做 |
+
+按 11 月 12 日这次实跑，WorkBuddy 国内版、Qoder 国内版、百度搭子、TRAE 国内版、WPS 灵犀这五家加起来一天是 900；千问办公每天还会刷新 200 积分。各家单位不一样，不能互换，也不能拿来比大小。
+
+活动会变。百度搭子和千问办公写明了是限时活动，Qoder 国际版的每日活动在作者账号上 11 月 12 日已经没有了。以客户端里看到的为准。
+
+## 快速开始
+
+安装不用自己敲命令，交给能操作电脑的 Agent 就行。
+
+**用 WorkBuddy（跑完会直接把结果告诉你）：** 左侧点「定时任务」，右上角点「新建 → 从对话新建」，发这句话：
+
+```text
+帮我创建一个定时任务：先读取这个 README，完成部署，https://github.com/Hiwoniu/agent-auto-signin 设置定时任务
+```
+
+**用别的 Agent：** 把仓库地址和下面这段话一起发给它：
+
+```text
+请按 README 的「交给 Agent」步骤，先识别本机是 macOS、Windows 还是 Linux，再部署 agent-auto-signin。直接执行能完成的步骤，复用已安装客户端和已有个人登录态。安装后执行第 6 步自检，再告诉我哪些平台实测通过、哪些需要我处理，以及后台任务是否已经注册。所有排程使用北京时间。
+```
+
+你只需要做一件事：第一次登录。扫码、短信验证码由你自己在客户端或浏览器里完成，之后工具沿用软件里记住的登录。
+
+Agent 汇报完这四件事，就说明装好了：本地自检的结果、每家领没领到、定时任务有没有注册、后台第一次实跑的结果。还没到点就该写「已注册，后台待验证」。
+
+想自己动手，从 clone 到看到第一个结果（macOS / Linux，需要 Python 3.10+）：
+
+```sh
+git clone https://github.com/Hiwoniu/agent-auto-signin.git
+cd agent-auto-signin
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-doubao.txt
+.venv/bin/python -m playwright install chromium
+.venv/bin/python agent_signin.py doctor all
+.venv/bin/python agent_signin.py status all
+```
+
+看到每个平台各输出一行 JSON，就说明跑通了。`status` 只查不领（千问办公例外，见下文），真正领取用 `run`。Windows 的命令和注册定时任务的方法见[交给 Agent：从拿到代码到部署](#交给-agent从拿到代码到部署)。
+
+> 跑不通？先看[常见问题](#常见问题)，再提 Issue，附上截图和报错。
+
+## 核心功能
+
+- **每家单独报结果**：每个平台输出一行 JSON；一个平台遇到登录、权限或活动问题，其余平台照常继续。
+- **领到了才算领到**：只有 `CLAIMED` 或 `ALREADY` 才算本轮已领；只是打开了页面写 `VISITED`，不算到账。
+- **不用开着客户端**：首次登录后，脚本读取客户端保存在本机的登录态直连接口（千问办公用无头浏览器访问工作区）。
+- **只做你每天会做的那一下**：每家一天一次，已领就跳过；不替你发对话，不替你登录。
+- **按北京时间排程**：其他平台 09:30 开始尝试，Qoder 两版 10:05 开始尝试，和电脑所在时区无关。
+- **装完后不依赖 Agent**：定时任务注册在本机（launchd、任务计划程序或 systemd），之后每天由本机脚本运行。
+
+## 支持的平台
 
 | 命令参数 | 平台和准备工作 | 每日流程 |
 | --- | --- | --- |
@@ -14,7 +89,19 @@
 | `qoder-global` | [Qoder 国际版](https://docs.qoder.com/zh/events/100credits)，桌面端已登录 | 使用国际版的独立 macOS 或 Windows 登录态，只处理每日 100 Credits；UTC+8 10:00 开放 |
 | `workbuddy-global` | [WorkBuddy 国际版](https://www.workbuddy.ai/pricing/)，可与国内版并存 | 提示活跃要求：当天在客户端发起至少一条对话，次日平台发放；脚本不发对话 |
 
+奖励随活动和账号权益变化，以客户端为准。
+
 豆包、WorkBuddy 国内版、Qoder 国内版、百度搭子、WPS 灵犀、TRAE 国内版和 Qoder 国际版已用真实登录态检查。除千问办公外，脚本在客户端关闭时也能运行：首次登录仍由客户端或网页完成，之后只读取本地登录态并直连接口。返回 `NO_AUTH` 时先重新登录一次。勿把手机号、邮箱、验证码和登录文件放进项目。
+
+### 各系统支持范围
+
+| 系统 | `run all` 默认包含 | 定时方式 |
+| --- | --- | --- |
+| macOS | 平台表中的全部九项 | 当前用户的 launchd |
+| Windows | WorkBuddy 国内版、豆包、Qoder 两版、千问办公 | Windows 任务计划程序 |
+| Linux | WorkBuddy 国内版（CodeBuddy CLI 登录态）、千问办公 | systemd 用户定时器 |
+
+Windows 和 Linux 的新增路径尚未在真实账号和目标系统上联调。豆包 Windows 支持 DPAPI 与 v10/v11 Cookie；v20 登录态暂不支持。WPS 灵犀、TRAE 国内版、百度搭子及 WorkBuddy 国际版当前没有 Windows/Linux 自动适配；可安装应用不等于可以自动领。Linux 的 Qoder 国内版只保留显式指定 `qoder-cn` 并已有 `QODER_TOKEN` 时的手动模式，默认定时不执行。不要从仓库、聊天或日志里传递令牌。
 
 ### 是否需要打开客户端
 
@@ -35,16 +122,6 @@
 因此后台任务不需要辅助功能权限，也不依赖客户端进程。首次登录、扫码、短信验证仍然必须由用户在客户端或浏览器里完成一次。客户端卸载后，WorkBuddy、Qoder、WPS 灵犀和 TRAE 的解密 runtime 或 Cookie 库会消失，脚本会返回 `NO_AUTH`。
 
 登录态本身会过期：TRAE 的 access token 约 12 天有效，到期后返回 `AUTH_REJECTED`；WPS 灵犀、百度搭子、豆包的 Cookie 和 WorkBuddy、Qoder 的令牌失效后返回 `NO_AUTH`。这时在对应客户端打开并完成一次登录即可，不需要为每次领取打开客户端。
-
-## 各系统支持范围
-
-| 系统 | `run all` 默认包含 | 定时方式 |
-| --- | --- | --- |
-| macOS | 平台表中的全部九项 | 当前用户的 launchd |
-| Windows | WorkBuddy 国内版、豆包、Qoder 两版、千问办公 | Windows 任务计划程序 |
-| Linux | WorkBuddy 国内版（CodeBuddy CLI 登录态）、千问办公 | systemd 用户定时器 |
-
-Windows 和 Linux 的新增路径尚未在真实账号和目标系统上联调。豆包 Windows 支持 DPAPI 与 v10/v11 Cookie；v20 登录态暂不支持。WPS 灵犀、TRAE 国内版、百度搭子及 WorkBuddy 国际版当前没有 Windows/Linux 自动适配；可安装应用不等于可以自动领。Linux 的 Qoder 国内版只保留显式指定 `qoder-cn` 并已有 `QODER_TOKEN` 时的手动模式，默认定时不执行。不要从仓库、聊天或日志里传递令牌。
 
 ## 交给 Agent：从拿到代码到部署
 
@@ -148,7 +225,7 @@ py -3 -m venv .venv
 
 最后分别汇报：**本地自检、各平台状态、定时任务注册、后台实跑结果**，并给出日志路径。后续每天由本机脚本运行，不需要 Agent 在线。
 
-## macOS 每日定时
+### macOS 每日定时
 
 ```sh
 .venv/bin/python daily_macos.py install --hour 9 --minute 30
@@ -161,7 +238,7 @@ tail -n 20 "$HOME/Library/Logs/agent-auto-signin/qoder.jsonl"
 
 Qoder 国内版和国际版在 **10:00（UTC+8）** 开放新一轮，定时任务从 **10:05（UTC+8）** 开始尝试。每版确认领到后当轮不再查询；暂未领到时，任务会在本轮开放期间再试。其他平台在北京时间 **09:30** 开始尝试。macOS 每分钟唤醒脚本检查一次，脚本统一按 UTC+8 判断时间，Mac 当前时区和夏令时不会改变运行时段。睡眠错过时，在本轮仍开放的情况下会于唤醒后尝试。两个任务都读取当前用户的本地登录态，不需要辅助功能权限，也不需要客户端保持运行。脚本只注册当前用户的任务，不修改其他平台已有的计划任务。
 
-## Windows 每日定时
+### Windows 每日定时
 
 用日常登录的 Windows 用户，在 PowerShell 的项目目录执行：
 
@@ -176,7 +253,7 @@ Get-Content "$env:LOCALAPPDATA\agent-auto-signin\logs\qoder.jsonl" -Tail 20
 
 任务名是 `AgentAutoSignin`，用当前用户的交互会话执行；不要用 SYSTEM 或其他用户运行，Windows 客户端登录态由原用户的 DPAPI 保护。可用 `-Python` 指定 Python 的绝对路径。任务计划程序里的下次触发时间只是唤醒检查时间，实际领取由脚本按北京时间决定。任务注册被系统策略拒绝时，保留手动命令，不改系统策略。
 
-## Linux 每日定时
+### Linux 每日定时
 
 在有 systemd 用户会话的 Linux 上，以登录 CodeBuddy CLI 的同一用户执行：
 
@@ -190,6 +267,50 @@ tail -n 20 "${XDG_STATE_HOME:-$HOME/.local/state}/agent-auto-signin/daily.jsonl"
 
 安装器注册当前用户的 `agent-auto-signin.timer` 和 `agent-auto-signin.service`，无需 sudo。先确认 `systemctl --user` 可用；没有用户服务管理器时，可用 `.venv/bin/python scheduled_run.py all --write-logs` 手动执行到点检查。千问办公首次登录仍需要图形会话，之后用已保存的会话在无界面浏览器中运行。
 
+## 常见问题
+
+<details>
+<summary>怎么知道是真的领到了？</summary>
+
+看每个平台那一行的状态。`CLAIMED` 或 `ALREADY` 才算本轮已领；`VISITED` 只是打开了页面，不等于到账；`DRY_RUN` 是可以领但这次没点；`UNCONFIRMED` 是结果不确定，先去客户端看一眼，别连点。
+
+</details>
+
+<details>
+<summary>返回 NO_AUTH 或 AUTH_REJECTED 怎么办？</summary>
+
+登录态失效了。在对应的客户端或网页里重新登录一次即可，不用改配置。TRAE 的登录大约 12 天过期一次。
+
+</details>
+
+<details>
+<summary>手机号、验证码会存进工具里吗？</summary>
+
+不会。登录由你自己在客户端或浏览器里完成，脚本只读取客户端保存在本机的登录态。也请不要把手机号、邮箱、验证码、Cookie 或令牌写进项目或日志。
+
+</details>
+
+<details>
+<summary>Windows 和 Linux 能用吗？</summary>
+
+能装上，支持的平台比 macOS 少（见[各系统支持范围](#各系统支持范围)），而且这两个系统的路径还没有用真实账号跑通。目前只在 Mac 上用作者自己的账号实际跑过。
+
+</details>
+
+<details>
+<summary>WorkBuddy 国际版为什么不自动领？</summary>
+
+它的奖励要求当天在客户端真的发起一次对话，脚本不替你发对话，只返回 `ACTIVITY_REQUIRED` 提醒你。
+
+</details>
+
+<details>
+<summary>想换个时间跑，或者不想用了？</summary>
+
+重新执行对应系统的 `install`，用小时和分钟参数改时间（macOS 是 `daily_macos.py install --hour 9 --minute 30`）。移除定时任务用对应系统的 `uninstall`。
+
+</details>
+
 ## 测试和来源
 
 ```sh
@@ -200,3 +321,40 @@ Windows 上改用 `.\.venv\Scripts\python.exe -m unittest discover -s tests -q`�
 
 - WorkBuddy 和 Qoder CN 适配来自 [88lin/workbuddy-auto-signin](https://github.com/88lin/workbuddy-auto-signin/tree/34048c1b9636c5a03af580d5e9221c8bbe0c1e6c)，保留 [MIT 许可](licenses/workbuddy-auto-signin.txt)。
 - 豆包活动入口和 macOS 登录态格式参考 [tututashu/doubao-auto-checkin](https://github.com/tututashu/doubao-auto-checkin/tree/d83914fc0cc9ec7b2d55904eca4a6bb8a54a0aef)，保留 [MIT 许可](licenses/doubao-auto-checkin.txt)。
+
+## 配套文章
+
+<!-- 文章发布后把下面一行改成带链接的写法，并取消注释：
+- [我做了一个可以自动帮你领免费Token的工具，免费给大家用](公众号文章链接)
+-->
+
+- 《我做了一个可以自动帮你领免费Token的工具，免费给大家用》，发在公众号「向明」
+
+更多用 Agent 干活的实战：
+
+- [千万别让Agent猜，这坑我们踩了4轮｜微信流App（附提示词）](https://mp.weixin.qq.com/s/kpetfZEERUY2NpZBJHPZZQ)：6 小时做完微信流 iOS App 的分工复盘，本项目“验不了的就写没验”的规矩出自这里
+- [JEV 案例库上线 10 天，3.7 万人访问](https://mp.weixin.qq.com/s/8Io6t-gmG4KV5pR2248gEg)：一个人加一个桌面 Agent，用定时任务把案例库持续更新起来
+
+## 关注向明
+
+我是向明，一个 AI 博主。用 AI 提效，减少繁杂的事情，多关注生活。分享的飞书教程获得过 10W+ 阅读。
+
+新项目、实战复盘和提示词会先发在公众号，微信扫码或搜一搜「向明」：
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/wechat-search-qr.png">
+    <img src="assets/wechat-search-qr-green.png" alt="微信扫码或搜一搜：向明" width="480">
+  </picture>
+</p>
+
+- 还在用别的送 Token 的 Agent？提个 Issue 告诉我，我看看能不能加进去
+- GitHub：[@Hiwoniu](https://github.com/Hiwoniu)
+
+如果它帮你省下了时间，点个 ⭐ Star，让更多人看到它。
+
+## License
+
+本项目使用 [MIT](LICENSE) 协议。引用的第三方代码保留各自的 MIT 许可，见 [licenses/](licenses/)。
+
+二维码和公众号物料图片不在本项目开源协议范围内。
